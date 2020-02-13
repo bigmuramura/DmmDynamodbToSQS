@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/aws/aws-sdk-go/service/ssm"
 )
 
 // DmmDate ... DynamoDBのテーブル形式
@@ -48,11 +49,6 @@ func main() {
 				S: aws.String(keyDay.Format("2006-01-02")), // 日付は文字列で渡す必要が有り、日付自体はDBにこのフォーマットで登録されている
 			},
 		},
-		/*
-			AttributesToGet: []*string{
-				aws.String("remainig_capacity"),
-			},
-		*/
 	}
 	resp, err := svc.GetItem(params)
 	if err != nil {
@@ -61,11 +57,6 @@ func main() {
 
 	// respの結果を確認
 	if len(resp.Item) != 0 {
-		/*
-			resultCapa := *resp.Item["remainig_capacity"]
-			fmt.Println(resultCapa)
-		*/
-
 		dmm := &DmmDate{}
 		if err := dynamodbattribute.UnmarshalMap(resp.Item, dmm); err != nil {
 			fmt.Println("Unmarshal Error", err)
@@ -83,23 +74,28 @@ func main() {
 		}
 	} else {
 		// 検索にヒットしなければ終了
+		fmt.Printf("%v 対象の日付はDynamoDBに登録なし", keyDay)
 		os.Exit(0)
 	}
 }
 
 func enqueueSqs(msg string) error {
-	const (
-		QUEUEURL = "https://sqs.ap-northeast-1.amazonaws.com/468866502186/dmm-giga-sqs"
-	)
-
 	sess := session.Must(session.NewSession())
 	svc := sqs.New(
 		sess,
 		aws.NewConfig().WithRegion(REGION),
 	)
 
+	// SQSのURLをパラメータストアから取得
+	parameterName := "DMM-SqsURL"
+	res, err := fetchParameterStore(parameterName)
+	if err != nil {
+		return err
+	}
+	sqsURL := res
+
 	parms := &sqs.SendMessageInput{
-		QueueUrl:     aws.String(QUEUEURL),
+		QueueUrl:     aws.String(sqsURL),
 		DelaySeconds: aws.Int64(1),
 		MessageBody:  aws.String(msg),
 	}
@@ -112,4 +108,23 @@ func enqueueSqs(msg string) error {
 	fmt.Println("SQSMessageID", *sqsRes.MessageId)
 
 	return nil
+}
+
+func fetchParameterStore(param string) (string, error) {
+	sess := session.Must(session.NewSession())
+	svc := ssm.New(
+		sess,
+		aws.NewConfig().WithRegion(REGION),
+	)
+
+	res, err := svc.GetParameter(&ssm.GetParameterInput{
+		Name:           aws.String(param),
+		WithDecryption: aws.Bool(true),
+	})
+	if err != nil {
+		return "Fetch Error", err
+	}
+
+	value := *res.Parameter.Value
+	return value, nil
 }
