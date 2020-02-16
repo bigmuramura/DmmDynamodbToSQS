@@ -1,11 +1,5 @@
 package main
 
-/*
-参考
-https://qiita.com/ezaki/items/2a9f10c53d958070ca95
-https://qiita.com/sakayuka/items/4af7fead94d589716f4d
-*/
-
 import (
 	"encoding/json"
 	"fmt"
@@ -20,8 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/ssm"
 )
 
-// DmmDate ... DynamoDBのテーブル形式
-type DmmDate struct {
+// DmmData ... DynamoDBのテーブル形式
+type DmmData struct {
 	Date             string `json:"check_date"`
 	RemainigCapacity int    `json:"remainig_capacity"`
 }
@@ -39,14 +33,14 @@ func main() {
 	)
 
 	// 検索キーの日付
-	keyDay := time.Now()
+	keyDay := time.Now().Format("2006-01-02")
 
 	params := &dynamodb.GetItemInput{
 		TableName: aws.String(DBTABLE),
 
 		Key: map[string]*dynamodb.AttributeValue{
 			"check_date": {
-				S: aws.String(keyDay.Format("2006-01-02")), // 日付は文字列で渡す必要が有り、日付自体はDBにこのフォーマットで登録されている
+				S: aws.String(keyDay), // 日付は文字列で渡す必要が有り、日付自体はDBにこのフォーマットで登録されている
 			},
 		},
 	}
@@ -57,7 +51,7 @@ func main() {
 
 	// respの結果を確認
 	if len(resp.Item) != 0 {
-		dmm := &DmmDate{}
+		dmm := &DmmData{}
 		if err := dynamodbattribute.UnmarshalMap(resp.Item, dmm); err != nil {
 			fmt.Println("Unmarshal Error", err)
 		}
